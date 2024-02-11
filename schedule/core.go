@@ -53,8 +53,20 @@ LOOP:
 	return heap.Pop(&scheduler.heap)
 }
 
+func (scheduler *Scheduler) Start() {
+	scheduler.waiter.Add(1)
+	go scheduler.run()
+}
+
+func (scheduler *Scheduler) Stop() {
+	scheduler.Push(sentinel)
+	scheduler.waiter.Wait()
+}
+
 // run 将会阻塞当前线程
 func (scheduler *Scheduler) run() {
+	defer scheduler.waiter.Done()
+
 	bg := context.Background()
 	sem := semaphore.NewWeighted(config.MaxWeight)
 
@@ -79,15 +91,4 @@ func (scheduler *Scheduler) run() {
 	if err := sem.Acquire(bg, config.MaxWeight); err != nil {
 		log.Printf("Error %s\n", err)
 	}
-	scheduler.waiter.Done()
-}
-
-func (scheduler *Scheduler) Start() {
-	scheduler.waiter.Add(1)
-	go scheduler.run()
-}
-
-func (scheduler *Scheduler) Stop() {
-	scheduler.Push(sentinel)
-	scheduler.waiter.Wait()
 }
