@@ -23,8 +23,8 @@ type Scheduler struct {
 	waiter sync.WaitGroup
 }
 
-func NewScheduler(maxTasks int) Scheduler {
-	return Scheduler{
+func NewScheduler(maxTasks int) *Scheduler {
+	return &Scheduler{
 		heap:      make(TaskHeap, 0, maxTasks),
 		queue:     make(chan *Task, maxTasks),
 		semaphore: make(chan struct{}, maxTasks),
