@@ -77,7 +77,6 @@ func main() {
 
 	router := gin.Default()
 	router.Any("*uri", func(ctx *gin.Context) {
-		log.Printf("Receive task %s", ctx.Request.RequestURI)
 		taskCtx, taskDone := context.WithCancel(context.Background())
 		defer taskDone()
 
@@ -91,38 +90,46 @@ func main() {
 		<-ready
 
 		log.Printf("Task ready to run %s", ctx.Request.RequestURI)
-		url := utils.GetRequestURL(ctx.Request)
-		if proxyReq, reqErr := http.NewRequest(ctx.Request.Method, url, ctx.Request.Body); reqErr != nil {
-			_ = ctx.AbortWithError(500, reqErr)
-		} else {
-			proxyReq.Header = make(http.Header)
-			for h, val := range ctx.Request.Header {
-				proxyReq.Header[h] = val
-			}
-			if resp, err := client.Do(proxyReq); err != nil {
-				_ = ctx.AbortWithError(500, err)
-			} else {
-				// 回收资源
-				defer func() {
-					if err := resp.Body.Close(); err != nil {
-						log.Println(err)
-					}
-				}()
-				ctx.Writer.WriteHeader(resp.StatusCode)
-				headerWriter := ctx.Writer.Header()
-				for name, values := range resp.Header {
-					for _, value := range values {
-						headerWriter.Add(name, value)
-					}
-				}
-				ctx.Writer.WriteHeaderNow()
 
-				// TODO zero copy
-				if _, err := copyBuffer(ctx.Writer, resp.Body, make([]byte, 4096)); err != nil {
-					log.Println(err)
-				}
+		proxyURL := utils.GetProxyURL(ctx.Request)
+		proxyReq, newReqErr := http.NewRequest(ctx.Request.Method, proxyURL, ctx.Request.Body)
+		if newReqErr != nil {
+			if err := ctx.AbortWithError(500, newReqErr); err != nil {
+				log.Println(err)
 			}
-			log.Printf("task taskDone %s", ctx.Request.RequestURI)
+			return
+		}
+		proxyReq.Header = make(http.Header)
+		for name, values := range ctx.Request.Header {
+			proxyReq.Header[name] = values
+		}
+
+		resp, reqErr := client.Do(proxyReq)
+		if reqErr != nil {
+			if err := ctx.AbortWithError(500, reqErr); err != nil {
+				log.Println(err)
+			}
+			return
+		}
+		// 回收资源
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				log.Println(err)
+			}
+		}()
+
+		ctx.Writer.WriteHeader(resp.StatusCode)
+		headerWriter := ctx.Writer.Header()
+		for name, values := range resp.Header {
+			for _, value := range values {
+				headerWriter.Add(name, value)
+			}
+		}
+		ctx.Writer.WriteHeaderNow()
+
+		// TODO zero copy
+		if _, err := copyBuffer(ctx.Writer, resp.Body, make([]byte, 4096)); err != nil {
+			log.Println(err)
 		}
 	})
 

@@ -65,7 +65,6 @@ func (scheduler *Scheduler) run() {
 			break
 		}
 
-		// FIXME 新来的数据优先级没法调度
 		if err := sem.Acquire(bg, task.Weight); err != nil {
 			log.Fatalln(err)
 		}
@@ -74,17 +73,6 @@ func (scheduler *Scheduler) run() {
 			<-task.Context.Done()
 			sem.Release(task.Weight)
 		}()
-
-		// FIXME cpu 占用高
-		//if sem.TryAcquire(task.Weight) {
-		//	task.Ready <- struct{}{}
-		//	go func() {
-		//		<-task.Context.Done()
-		//		sem.Release(task.Weight)
-		//	}()
-		//} else {
-		//	scheduler.Push(task)
-		//}
 	}
 
 	// waiting all task waiter!

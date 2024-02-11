@@ -34,7 +34,7 @@ func GetWeight(req *http.Request) int64 {
 	}
 }
 
-func GetRequestURL(req *http.Request) string {
+func GetProxyURL(req *http.Request) string {
 	requestURI := req.RequestURI
 	return config.ForwardURLPrefix + requestURI
 }
