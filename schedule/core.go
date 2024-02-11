@@ -80,7 +80,7 @@ func (scheduler *Scheduler) run() {
 		if err := sem.Acquire(bg, task.Weight); err != nil {
 			log.Fatalln(err)
 		}
-		task.Ready <- struct{}{}
+		close(task.Ready)
 		go func() {
 			<-task.Context.Done()
 			sem.Release(task.Weight)
