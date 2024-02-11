@@ -9,9 +9,6 @@ import (
 	"sync"
 )
 
-// chan struct{} 专用占位符
-var empty = struct{}{}
-
 // 结束标识
 var sentinel *Task = nil
 
@@ -38,7 +35,7 @@ func NewScheduler(maxTasks int) Scheduler {
 // Push thread safe
 func (scheduler *Scheduler) Push(task any) {
 	scheduler.queue <- task.(*Task)
-	scheduler.semaphore <- empty
+	scheduler.semaphore <- struct{}{}
 }
 
 // unsafePop thread unsafe
@@ -67,19 +64,29 @@ func (scheduler *Scheduler) run() {
 			log.Println("退出任务调度器！")
 			break
 		}
+
+		// FIXME 新来的数据优先级没法调度
 		if err := sem.Acquire(bg, task.Weight); err != nil {
-			log.Println(err)
-		} else {
-			go func() {
-				log.Printf("Schedule task %p", task)
-				task.Ready <- empty
-				log.Printf("Waiting task waiter %p", task)
-				<-task.Context.Done()
-				sem.Release(task.Weight)
-				log.Printf("Context waiter %p", task)
-			}()
+			log.Fatalln(err)
 		}
+		task.Ready <- struct{}{}
+		go func() {
+			<-task.Context.Done()
+			sem.Release(task.Weight)
+		}()
+
+		// FIXME cpu 占用高
+		//if sem.TryAcquire(task.Weight) {
+		//	task.Ready <- struct{}{}
+		//	go func() {
+		//		<-task.Context.Done()
+		//		sem.Release(task.Weight)
+		//	}()
+		//} else {
+		//	scheduler.Push(task)
+		//}
 	}
+
 	// waiting all task waiter!
 	if err := sem.Acquire(bg, config.MaxWeight); err != nil {
 		log.Printf("Error %s\n", err)
