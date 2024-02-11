@@ -1,4 +1,4 @@
-module github.com/fanck0605/hello-gin
+module github.com/fanck0605/http-schedule
 
 go 1.22.0
 
