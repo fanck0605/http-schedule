@@ -13,34 +13,51 @@ import (
 var sentinel *Task = nil
 
 type Scheduler struct {
-	// 调度器 unsafePop 数据时，会借助这个 heap 来判断优先级
+	// 调度器 pop 数据时，会借助这个 heap 来判断优先级
 	heap TaskHeap
 	// 用来传递数据的 queue，用于并发的接受数据
 	queue chan *Task
-	// 优先队列当前大小，其值为 len(heap) + len(queue)
-	semaphore chan struct{}
+	// 任务队列当前大小，其值为 len(heap) + len(queue)
+	tasks chan struct{}
+	// 循环一次为一个 tick
+	tick chan struct{}
 	// 控制任务开始和结束
-	waiter sync.WaitGroup
+	running sync.WaitGroup
 }
 
 func NewScheduler(maxTasks int) *Scheduler {
 	return &Scheduler{
-		heap:      make(TaskHeap, 0, maxTasks),
-		queue:     make(chan *Task, maxTasks),
-		semaphore: make(chan struct{}, maxTasks),
-		waiter:    sync.WaitGroup{},
+		heap:    make(TaskHeap, 0, maxTasks),
+		queue:   make(chan *Task, maxTasks),
+		tasks:   make(chan struct{}, maxTasks),
+		tick:    make(chan struct{}),
+		running: sync.WaitGroup{},
 	}
+}
+
+// 通知继续循环
+func (scheduler *Scheduler) notifyNext() {
+	select {
+	case scheduler.tick <- struct{}{}:
+	default:
+	}
+}
+
+// 等待继续循环
+func (scheduler *Scheduler) waitNext() {
+	<-scheduler.tick
 }
 
 // Push thread safe
 func (scheduler *Scheduler) Push(task any) {
+	scheduler.tasks <- struct{}{}
 	scheduler.queue <- task.(*Task)
-	scheduler.semaphore <- struct{}{}
+	scheduler.notifyNext()
 }
 
-// unsafePop thread unsafe
-func (scheduler *Scheduler) unsafePop() any {
-	<-scheduler.semaphore
+// pop thread unsafe
+func (scheduler *Scheduler) pop() any {
+	<-scheduler.tasks
 LOOP:
 	for {
 		select {
@@ -54,41 +71,51 @@ LOOP:
 }
 
 func (scheduler *Scheduler) Start() {
-	scheduler.waiter.Add(1)
+	scheduler.running.Add(1)
 	go scheduler.run()
 }
 
 func (scheduler *Scheduler) Stop() {
 	scheduler.Push(sentinel)
-	scheduler.waiter.Wait()
+	scheduler.running.Wait()
 }
 
 // run 将会阻塞当前线程
 func (scheduler *Scheduler) run() {
-	defer scheduler.waiter.Done()
+	defer scheduler.running.Done()
 
-	bg := context.Background()
-	sem := semaphore.NewWeighted(config.MaxWeight)
-
+	resources := semaphore.NewWeighted(config.MaxResources)
 	for {
-		task := scheduler.unsafePop().(*Task)
+		task := scheduler.pop().(*Task)
 		if task == sentinel {
 			log.Println("退出任务调度器！")
 			break
 		}
-
-		if err := sem.Acquire(bg, task.Weight); err != nil {
-			log.Fatalln(err)
-		}
-		close(task.Ready)
+		ctx, cancel := context.WithCancel(context.Background())
+		scheduled := make(chan struct{})
 		go func() {
-			<-task.Context.Done()
-			sem.Release(task.Weight)
+			cancelled := resources.Acquire(ctx, task.Resources)
+			if cancelled != nil {
+				scheduler.Push(task) // 如果被取消调度，送回队列重新调度
+				close(scheduled)
+				return
+			}
+			scheduler.notifyNext() // notify schedule next task
+			close(scheduled)
+
+			close(task.Ready)     // notify task ready to run
+			<-task.Context.Done() // wait task running
+			resources.Release(task.Resources)
 		}()
+		// 任务获取到资源，或者新来了任务，则继续
+		scheduler.waitNext()
+		cancel()
+		<-scheduled
 	}
 
-	// waiting all task waiter!
-	if err := sem.Acquire(bg, config.MaxWeight); err != nil {
-		log.Printf("Error %s\n", err)
+	// waiting all task running!
+	cancelled := resources.Acquire(context.Background(), config.MaxResources)
+	if cancelled != nil {
+		log.Printf("Error %s\n", cancelled)
 	}
 }

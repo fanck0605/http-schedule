@@ -82,16 +82,16 @@ func main() {
 
 		ready := make(chan struct{})
 		scheduler.Push(&schedule.Task{
-			Priority: utils.GetPriority(ctx.Request),
-			Weight:   utils.GetWeight(ctx.Request),
-			Context:  taskCtx,
-			Ready:    ready,
+			Priority:  utils.GetPriority(ctx.Request),
+			Resources: utils.GetResources(ctx.Request),
+			Context:   taskCtx,
+			Ready:     ready,
 		})
 		<-ready
 
 		log.Printf("Task ready to run %s", ctx.Request.RequestURI)
 
-		proxyURL := utils.GetProxyURL(ctx.Request)
+		proxyURL := utils.GetForwardURL(ctx.Request)
 		proxyReq, newReqErr := http.NewRequest(ctx.Request.Method, proxyURL, ctx.Request.Body)
 		if newReqErr != nil {
 			if err := ctx.AbortWithError(500, newReqErr); err != nil {

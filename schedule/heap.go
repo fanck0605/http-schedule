@@ -8,7 +8,7 @@ type Task struct {
 	// 调度优先级
 	Priority int64
 	// 调度需要的资源数
-	Weight int64
+	Resources int64
 	// 如果有资源了，通知 Gin 继续执行
 	Ready chan<- struct{}
 	// Gin 任务上下文，判定任务是否 Done

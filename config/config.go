@@ -1,14 +1,15 @@
 package config
 
-// MaxWeight 最大资源数的权重
-var MaxWeight int64 = 24
+// MaxResources 最大资源数
+var MaxResources int64 = 24
 
-// RequestWeight 单词请求需要的权重
-var RequestWeight = map[string]int64{
+// RequestResources 单次需要的资源
+var RequestResources = map[string]int64{
 	"/test1": 24,
 	"/test2": 2,
 }
 
+// RequestPriority 请求优先级
 var RequestPriority = map[string]int64{
 	"/test1": 1,
 	"/test2": 20,

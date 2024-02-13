@@ -20,21 +20,21 @@ func GetPriority(req *http.Request) int64 {
 	}
 }
 
-func GetWeight(req *http.Request) int64 {
-	if values, hasProperty := req.Header["X-Weight"]; hasProperty {
+func GetResources(req *http.Request) int64 {
+	if values, hasProperty := req.Header["X-Resources"]; hasProperty {
 		if weight, parseError := strconv.ParseInt(values[0], 10, 64); parseError != nil {
 			return weight
 		}
 	}
 	requestURI := req.RequestURI
-	if weight, ok := config.RequestWeight[requestURI]; ok {
+	if weight, ok := config.RequestResources[requestURI]; ok {
 		return weight
 	} else {
 		return 0
 	}
 }
 
-func GetProxyURL(req *http.Request) string {
+func GetForwardURL(req *http.Request) string {
 	requestURI := req.RequestURI
 	return config.ForwardURLPrefix + requestURI
 }
